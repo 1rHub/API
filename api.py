@@ -20,7 +20,15 @@ def login():
 
     if resultuser:
         if bcrypt.checkpw(password.encode(), resultuser['password'].encode()):
-            return {'status': 'success'}
+            return {
+                'status': 'success',
+                'data_user': {
+                    'id_user': str(resultuser['_id']),
+                    'nama': resultuser['nama'],
+                    'email': resultuser['email'],
+                    'telepon': resultuser['telepon'],
+                }
+            }
         else:
             return {'status': 'error', 'msg': 'email atau password salah'}
     else:
@@ -30,7 +38,6 @@ def login():
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
-    # cek apakah email sudah terdaftar
     existing_user = collectionUser.find_one({'email': data['email']})
     
     if existing_user:
@@ -52,3 +59,5 @@ def register():
         'status': 'success',
         'msg': 'Registrasi berhasil'
     }
+    
+    
