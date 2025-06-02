@@ -1,53 +1,70 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from pymongo import MongoClient
+from flask_sqlalchemy import SQLAlchemy
 import bcrypt
-from bson import ObjectId
 
 app = Flask(__name__)
 CORS(app)
 
-# Koneksi ke MongoDB
-client = MongoClient('mongodb://localhost:27017/')
-db = client['uhome']
-collectionUser = db['user']
-collectionHome = db['home']
-collectionFavorite = db['favorite']
+# Konfigurasi koneksi MySQL
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:@localhost/uhome'  # sesuaikan password
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Endpoint Get Data Home
+db = SQLAlchemy(app)
+
+# Model
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nama = db.Column(db.String(100))
+    email = db.Column(db.String(100), unique=True)
+    password = db.Column(db.String(255))
+    telepon = db.Column(db.String(20))
+
+class Home(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    judul = db.Column(db.String(200))
+    lokasi = db.Column(db.String(200))
+    harga = db.Column(db.String(100))
+    gambar = db.Column(db.String(300))
+
+class Favorite(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_email = db.Column(db.String(100))
+    home_id = db.Column(db.Integer, db.ForeignKey('home.id'))
+
+# Endpoint: Get data Home
 @app.route('/home', methods=['GET'])
 def get_homes():
-    homes_cursor = collectionHome.find()
-    homes = []
-    for home in homes_cursor:
-        homes.append({
-            'id': str(home['_id']),
-            'judul': home.get('judul'),
-            'lokasi': home.get('lokasi'),
-            'harga': home.get('harga'),
-            'gambar': home.get('gambar')
+    homes = Home.query.all()
+    result = []
+    for home in homes:
+        result.append({
+            'id': home.id,
+            'judul': home.judul,
+            'lokasi': home.lokasi,
+            'harga': home.harga,
+            'gambar': home.gambar
         })
-    return jsonify(homes)
+    return jsonify(result)
 
-# Endpoint: Get daftar favorit user
+# Endpoint: Get daftar favorit
 @app.route('/favorites/<user_email>', methods=['GET'])
 def get_user_favorites(user_email):
-    fav_cursor = collectionFavorite.find({'user_email': user_email})
-    favorites = []
-    for fav in fav_cursor:
-        # Ambil detail properti dari koleksi `home`
-        home = collectionHome.find_one({'_id': ObjectId(fav['home_id'])})
+    favorites = Favorite.query.filter_by(user_email=user_email).all()
+    result = []
+    for fav in favorites:
+        home = Home.query.get(fav.home_id)
         if home:
-            favorites.append({
-                'id': str(home['_id']),
-                'judul': home.get('judul'),
-                'lokasi': home.get('lokasi'),
-                'harga': home.get('harga'),
-                'gambar': home.get('gambar')
+            result.append({
+                'id': home.id,
+                'judul': home.judul,
+                'lokasi': home.lokasi,
+                'harga': home.harga,
+                'gambar': home.gambar
             })
-    return jsonify(favorites)
+    return jsonify(result)
 
-# Endpoint: Tambah favorit dari klik icon di Home
+# Endpoint: Tambah favorit
 @app.route('/favorites', methods=['POST'])
 def add_favorite():
     data = request.json
@@ -55,80 +72,61 @@ def add_favorite():
     home_id = data.get('home_id')
 
     # Cek duplikat
-    existing = collectionFavorite.find_one({
-        'user_email': user_email,
-        'home_id': home_id
-    })
+    existing = Favorite.query.filter_by(user_email=user_email, home_id=home_id).first()
     if existing:
         return jsonify({'status': 'error', 'msg': 'Sudah difavoritkan'}), 400
 
-    collectionFavorite.insert_one({
-        'user_email': user_email,
-        'home_id': home_id
-    })
+    fav = Favorite(user_email=user_email, home_id=home_id)
+    db.session.add(fav)
+    db.session.commit()
     return jsonify({'status': 'success', 'msg': 'Ditambahkan ke favorit'}), 201
 
-# Endpoint: Hapus favorit dari klik ulang icon di Home
+# Endpoint: Hapus favorit
 @app.route('/favorites', methods=['DELETE'])
 def delete_favorite():
     data = request.json
     user_email = data.get('user_email')
     home_id = data.get('home_id')
 
-    result = collectionFavorite.delete_one({
-        'user_email': user_email,
-        'home_id': home_id
-    })
-
-    if result.deleted_count > 0:
+    fav = Favorite.query.filter_by(user_email=user_email, home_id=home_id).first()
+    if fav:
+        db.session.delete(fav)
+        db.session.commit()
         return jsonify({'status': 'success', 'msg': 'Favorit dihapus'}), 200
     else:
         return jsonify({'status': 'error', 'msg': 'Data tidak ditemukan'}), 404
 
-# Endpoint Login
+# Endpoint: Login
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
     email = data['email']
     password = data['password']
 
-    resultuser = collectionUser.find_one({'email': email})
+    user = User.query.filter_by(email=email).first()
+    if user and bcrypt.checkpw(password.encode(), user.password.encode()):
+        return {'status': 'success'}
+    return {'status': 'error', 'msg': 'Email atau password salah'}
 
-    if resultuser:
-        if bcrypt.checkpw(password.encode(), resultuser['password'].encode()):
-            return {'status': 'success'}
-        else:
-            return {'status': 'error', 'msg': 'email atau password salah'}
-    else:
-        return {'status': 'error', 'msg': 'email atau password salah'}
-
-# Endpoint Register
+# Endpoint: Register
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
-    existing_user = collectionUser.find_one({'email': data['email']})
-    
+    existing_user = User.query.filter_by(email=data['email']).first()
     if existing_user:
-        return {
-            'status': 'error',
-            'msg': 'Email sudah terdaftar'
-        }
+        return {'status': 'error', 'msg': 'Email sudah terdaftar'}
 
-    hashed_password = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt())
-    new_user = {
-        'nama': data['nama'],
-        'email': data['email'],
-        'password': hashed_password.decode('utf-8'),
-        'telepon': data['telepon'],
-    }
-    collectionUser.insert_one(new_user)
-
-    return {
-        'status': 'success',
-        'msg': 'Registrasi berhasil'
-    }
+    hashed_password = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    user = User(
+        nama=data['nama'],
+        email=data['email'],
+        password=hashed_password,
+        telepon=data['telepon']
+    )
+    db.session.add(user)
+    db.session.commit()
+    return {'status': 'success', 'msg': 'Registrasi berhasil'}
 
 # Jalankan server
 if __name__ == '__main__':
     app.run(debug=True)
-    
