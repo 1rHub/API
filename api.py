@@ -6,7 +6,6 @@ from bson import ObjectId
 
 app = Flask(__name__)
 CORS(app)
-sdasdsadadads
 
 # Koneksi ke MongoDB
 client = MongoClient('mongodb://localhost:27017/')
