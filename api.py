@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from markupsafe import escape
 import bcrypt
 
 app = Flask(__name__)
@@ -21,11 +22,16 @@ class User(db.Model):
     telepon = db.Column(db.String(20))
 
 class Home(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    judul = db.Column(db.String(200))
-    lokasi = db.Column(db.String(200))
-    harga = db.Column(db.String(100))
-    gambar = db.Column(db.String(300))
+    id = db.Column(db.String(24), primary_key=True) 
+    NO = db.Column(db.String(255))
+    NAMA_RUMAH = db.Column(db.String(255))
+    HARGA = db.Column(db.String(100))
+    LB = db.Column(db.String(50))
+    LT = db.Column(db.String(50))
+    KT = db.Column(db.String(10))
+    KM = db.Column(db.String(10))
+    GRS = db.Column(db.String(10))
+
 
 class Favorite(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -40,27 +46,35 @@ def get_homes():
     for home in homes:
         result.append({
             'id': home.id,
-            'judul': home.judul,
-            'lokasi': home.lokasi,
-            'harga': home.harga,
-            'gambar': home.gambar
+                'NO': home.NO,
+                'NAMA RUMAH': home.NAMA_RUMAH,
+                'HARGA': home.HARGA,
+                'LB': home.LB,
+                'LT': home.LT,
+                'KT': home.KT,
+                'KM': home.KM,
+                'GRS': home.GRS
         })
     return jsonify(result)
 
 # Endpoint: Get daftar favorit
 @app.route('/favorites/<user_email>', methods=['GET'])
 def get_user_favorites(user_email):
-    favorites = Favorite.query.filter_by(user_email=user_email).all()
+    favorites = Favorite.query.filter_by(user_email=(user_email)).all()
     result = []
     for fav in favorites:
         home = Home.query.get(fav.home_id)
         if home:
             result.append({
                 'id': home.id,
-                'judul': home.judul,
-                'lokasi': home.lokasi,
-                'harga': home.harga,
-                'gambar': home.gambar
+                'NO': home.NO,
+                'NAMA RUMAH': home.NAMARUMAH,
+                'HARGA': home.HARGA,
+                'LB': home.LB,
+                'LT': home.LT,
+                'KT': home.KT,
+                'KM': home.KM,
+                'GRS': home.GRS
             })
     return jsonify(result)
 
@@ -132,3 +146,4 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(debug=True)
+
