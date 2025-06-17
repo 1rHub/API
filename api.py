@@ -13,13 +13,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Model
 class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True) 
     nama = db.Column(db.String(100))
     email = db.Column(db.String(100), unique=True)
     password = db.Column(db.String(255))
     telepon = db.Column(db.String(20))
+    role = db.Column(db.String(20), default='user')
+
+
 
 class Home(db.Model):
     id = db.Column(db.String(24), primary_key=True) 
@@ -110,7 +112,7 @@ def delete_favorite():
     else:
         return jsonify({'status': 'error', 'msg': 'Data tidak ditemukan'}), 404
 
-# Endpoint: Login
+# Endpoint: Login untuk user & admin (dengan bcrypt, tanpa JWT)
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
@@ -118,28 +120,54 @@ def login():
     password = data['password']
 
     user = User.query.filter_by(email=email).first()
+    
     if user and bcrypt.checkpw(password.encode(), user.password.encode()):
-        return {'status': 'success'}
-    return {'status': 'error', 'msg': 'Email atau password salah'}
+        return {
+            'status': 'success',
+            'msg': f'Login berhasil sebagai {user.role}',
+            'user': {
+                'id': user.id,
+                'nama': user.nama,
+                'email': user.email,
+                'role': user.role
+            }
+        }
 
-# Endpoint: Register
+    return {'status': 'error', 'msg': 'Email atau password salah'}, 401
+
+
+# Endpoint: Register untuk user dan admin
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
-    existing_user = User.query.filter_by(email=data['email']).first()
-    if existing_user:
-        return {'status': 'error', 'msg': 'Email sudah terdaftar'}
+    nama = data.get('nama')
+    email = data.get('email')
+    password = data.get('password')
+    telepon = data.get('telepon')
+    role = data.get('role', 'user')  # Default ke 'user'
 
-    hashed_password = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    # Cek apakah email sudah digunakan
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user:
+        return {'status': 'error', 'msg': 'Email sudah terdaftar'}, 400
+
+    # Enkripsi password dengan bcrypt
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    # Buat user baru
     user = User(
-        nama=data['nama'],
-        email=data['email'],
+        nama=nama,
+        email=email,
         password=hashed_password,
-        telepon=data['telepon']
+        telepon=telepon,
+        role=role
     )
+
+    # Simpan ke database
     db.session.add(user)
     db.session.commit()
-    return {'status': 'success', 'msg': 'Registrasi berhasil'}
+
+    return {'status': 'success', 'msg': f'Registrasi berhasil sebagai {role}'}, 201
 
 # Jalankan server
 if __name__ == '__main__':
